@@ -1,10 +1,13 @@
-import { useState, type Key } from 'react';
+import { useEffect, useState, type Key } from 'react';
 
 import { SearchOutlined } from '@ant-design/icons';
+import UploadXlsxField, {
+  type Props as UploadXlsxFieldProps,
+} from '@shared/ui/UploadXlsxField';
 import { formatThousands } from '@shared/utils/formatThousands';
+import { hasProperty, isString2DArray } from '@shared/utils/typeGuard';
 import { Card, Input, message, Table, Tag, Typography } from 'antd';
 
-import type { KeywordItem } from '@/entities/types/keyword';
 import type { ColumnsType } from 'antd/es/table';
 
 import {
@@ -12,9 +15,11 @@ import {
   KEYWORD_DATA_START_ROW_INDEX,
   KEYWORD_ENUMS,
 } from '@/entities/consts/keyword';
-import UploadXlsxField, {
-  type Props as UploadXlsxFieldProps,
-} from '@shared/ui/UploadXlsxField';
+import {
+  isNumberField,
+  isStringField,
+  type KeywordItem,
+} from '@/entities/types/keyword';
 import { reverseObject } from '@/shared/utils/reverseObject';
 
 interface Props {
@@ -22,38 +27,82 @@ interface Props {
   onSelect: (key: Key[], keywords: KeywordItem[]) => void;
 }
 
+// TODO: 검색 기능
 export default function Keyword({ selectedValues, onSelect }: Props) {
   const [data, setData] = useState<KeywordItem[]>([]);
-  const [searchText, setSearchText] = useState('');
+  const [messageApi, contextHolder] = message.useMessage();
 
-  // TODO: 데이터 타입 안 맞으면 에러 처리 === 카테고리명으로 비교
   const handleChangeFile: UploadXlsxFieldProps['onChange'] = (rawData) => {
+    // 데이터를 찾을 수 없을 경우 > 에러 출력
     if (!rawData) {
-      message.error('데이터가 없습니다.');
+      messageApi.error('데이터가 없습니다.');
       return;
     }
 
-    const categories = rawData.slice(
-      KEYWORD_CATEGORY_ROW_INDEX,
-      KEYWORD_CATEGORY_ROW_INDEX + 1
-    )[0];
-    const data = rawData.slice(KEYWORD_DATA_START_ROW_INDEX);
+    // 데이터가 문자열로 된 2차원 배열이 아닐 경우 > 에러 출력
+    // TODO: 타입 가드 함수를 이렇게 묶는게 맞을까?
+    if (!isString2DArray(rawData)) {
+      messageApi.error('잘못된 파일입니다.');
+      return;
+    }
+
     const keywordMap = reverseObject(KEYWORD_ENUMS);
+    const categories = rawData
+      .slice(KEYWORD_CATEGORY_ROW_INDEX, KEYWORD_CATEGORY_ROW_INDEX + 1)[0]
+      .filter((item) => hasProperty(keywordMap, item));
 
-    const tableData = data.map((row) => {
-      // TODO: 타입 정의
-      const newRow = row.reduce((acc, curr, i) => {
-        acc[keywordMap[categories[i]]] = curr;
-        return acc;
-      }, {} as KeywordItem);
+    const data = rawData.slice(KEYWORD_DATA_START_ROW_INDEX);
 
-      return {
-        ...newRow,
-        key: newRow.keyword,
-      };
-    });
+    try {
+      const tableData = data.map((row) => {
+        const newRow = row
+          .filter((_, i) => hasProperty(keywordMap, categories[i]))
+          .reduce((acc, curr, i) => {
+            const categoryKey = keywordMap[categories[i]];
 
-    setData(tableData);
+            // 유효한 카테고리 키인지 확인
+            if (!categoryKey) {
+              return acc;
+            }
+
+            // 숫자 필드인 경우
+            if (isNumberField(categoryKey) && typeof curr === 'number') {
+              acc[categoryKey] = curr;
+            }
+            // 문자열 필드인 경우
+            else if (isStringField(categoryKey) && typeof curr === 'string') {
+              acc[categoryKey] = curr;
+            } else {
+              throw new Error(
+                `${categoryKey}에 대한 잘못된 값 타입입니다: ${curr}`
+              );
+            }
+
+            return acc;
+          }, {} as KeywordItem);
+
+        // 데이터가 비어있을 경우 > 에러 출력
+        if (Object.keys(newRow).length === 0) {
+          throw new Error('잘못된 파일입니다.');
+        }
+
+        // 필수 필드 확인
+        if (!newRow.keyword) {
+          throw new Error('keyword 필드가 없습니다.');
+        }
+
+        // key 필드 추가
+        newRow.key = newRow.keyword;
+
+        return newRow;
+      });
+
+      setData(tableData);
+    } catch (error) {
+      console.error(error);
+      messageApi.error('잘못된 파일입니다.');
+      return;
+    }
   };
 
   const handleRemoveData = () => {
@@ -66,7 +115,7 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
       dataIndex: 'rank',
       key: 'rank',
       width: 70,
-      sorter: (a, b) => a.rank - b.rank,
+      sorter: (a, b) => Number(a.rank) - Number(b.rank),
       className: 'text-right',
     },
     {
@@ -74,7 +123,6 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
       dataIndex: 'keyword',
       key: 'keyword',
       width: 180,
-      fixed: 'left',
       sorter: (a, b) => a.keyword.localeCompare(b.keyword),
       render: (text) => <span className="font-medium">{text}</span>,
     },
@@ -104,7 +152,7 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
       dataIndex: 'searchVolume',
       key: 'searchVolume',
       width: 100,
-      sorter: (a, b) => a.searchVolume - b.searchVolume,
+      sorter: (a, b) => Number(a.searchVolume) - Number(b.searchVolume),
       className: 'text-right',
       render: (value) => formatThousands(value),
     },
@@ -113,7 +161,7 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
       dataIndex: 'prevSearchVolume',
       key: 'prevSearchVolume',
       width: 120,
-      sorter: (a, b) => a.prevSearchVolume - b.prevSearchVolume,
+      sorter: (a, b) => Number(a.prevSearchVolume) - Number(b.prevSearchVolume),
       className: 'text-right',
       render: (value) => formatThousands(value),
     },
@@ -122,7 +170,7 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
       dataIndex: 'growthRate',
       key: 'growthRate',
       width: 100,
-      sorter: (a, b) => a.growthRate - b.growthRate,
+      sorter: (a, b) => Number(a.growthRate) - Number(b.growthRate),
       className: 'text-right',
       render: (value) => {
         const color =
@@ -139,7 +187,7 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
       dataIndex: 'productCount',
       key: 'productCount',
       width: 100,
-      sorter: (a, b) => a.productCount - b.productCount,
+      sorter: (a, b) => Number(a.productCount) - Number(b.productCount),
       className: 'text-right',
       render: (value) => formatThousands(value),
     },
@@ -150,65 +198,68 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
       width: 100,
       sorter: (a, b) => a.competitionLevel.localeCompare(b.competitionLevel),
       render: (value) => {
-        // TODO: 매우높음, 높음, 보통, 낮음, 매우낮음
         let color = 'green';
-        if (value === '중간') color = 'blue';
+
+        if (value === '보통') color = 'blue';
         else if (value === '높음') color = 'orange';
-        else if (value === '매우 높음') color = 'red';
+        else if (value === '매우높음') color = 'red';
+
         return <Tag color={color}>{value}</Tag>;
       },
     },
   ];
 
   return (
-    <section>
-      <Card className="shadow-md">
-        <div className="flex justify-between items-center mb-4">
-          <Typography.Title level={2} style={{ margin: 0, fontSize: '20px' }}>
-            키워드 선택
-          </Typography.Title>
-          <UploadXlsxField
-            onChange={handleChangeFile}
-            onRemove={handleRemoveData}
+    <>
+      <section>
+        <Card className="shadow-md">
+          <div className="flex justify-between items-center mb-4">
+            <Typography.Title level={2} style={{ margin: 0, fontSize: '20px' }}>
+              키워드 선택
+            </Typography.Title>
+            <UploadXlsxField
+              onChange={handleChangeFile}
+              onRemove={handleRemoveData}
+            />
+          </div>
+          <div className="mb-4">
+            <Input
+              placeholder="키워드 검색..."
+              prefix={<SearchOutlined className="text-gray-400" />}
+              className="rounded-lg border-gray-300"
+              allowClear
+            />
+          </div>
+          <Table
+            columns={tableColumns}
+            dataSource={data}
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedValues.map((values) => values.key),
+              onChange: onSelect,
+            }}
+            size="small"
+            scroll={{ x: 1200, y: 400 }}
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showTotal: (total) => `총 ${total}개 항목`,
+            }}
+            rowClassName={(record, index) =>
+              index % 2 === 0
+                ? 'bg-white hover:bg-blue-50'
+                : 'bg-gray-50 hover:bg-blue-50'
+            }
+            className="border border-gray-200 rounded-lg overflow-hidden"
           />
-        </div>
-        <div className="mb-4">
-          <Input
-            placeholder="키워드 검색..."
-            prefix={<SearchOutlined className="text-gray-400" />}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            className="rounded-lg border-gray-300"
-            allowClear
-          />
-        </div>
-        <Table
-          columns={tableColumns}
-          dataSource={data}
-          rowSelection={{
-            type: 'checkbox',
-            onChange: onSelect,
-          }}
-          size="small"
-          scroll={{ x: 1200, y: 400 }}
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showTotal: (total) => `총 ${total}개 항목`,
-          }}
-          rowClassName={(record, index) =>
-            index % 2 === 0
-              ? 'bg-white hover:bg-blue-50'
-              : 'bg-gray-50 hover:bg-blue-50'
-          }
-          className="border border-gray-200 rounded-lg overflow-hidden"
-        />
-        <div className="mt-4">
-          <Typography.Text type="secondary">
-            선택된 키워드: {selectedValues.length}개
-          </Typography.Text>
-        </div>
-      </Card>
-    </section>
+          <div className="mt-4">
+            <Typography.Text type="secondary">
+              선택된 키워드: {selectedValues.length}개
+            </Typography.Text>
+          </div>
+        </Card>
+      </section>
+      {contextHolder}
+    </>
   );
 }
