@@ -1,3 +1,4 @@
+export const PRODUCT_DATA_TYPE = 'product';
 export const PRODUCT_ENUMS = {
   id: '상품번호',
   type: '상품구분',

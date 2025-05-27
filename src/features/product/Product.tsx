@@ -1,6 +1,7 @@
 import { useState, type Key } from 'react';
 
 import { SearchOutlined } from '@ant-design/icons';
+import useSearch from '@shared/hooks/useSearch';
 import UploadXlsxField, {
   type Props as UploadXlsxFieldProps,
 } from '@shared/ui/UploadXlsxField';
@@ -10,16 +11,21 @@ import {
   isString,
   isString2DArray,
 } from '@shared/utils/typeGuard';
-import { Button, Card, Input, message, Table, Tag, Typography } from 'antd';
+import { Card, Input, message, Table, Tag, Typography } from 'antd';
 
-import { isStringField, type ProductItem } from '@/entities/types/product';
 import type { ColumnsType } from 'antd/es/table';
 
 import {
   PRODUCT_CATEGORY_ROW_INDEX,
   PRODUCT_DATA_START_ROW_INDEX,
+  PRODUCT_DATA_TYPE,
   PRODUCT_ENUMS,
 } from '@/entities/consts/product';
+import {
+  isProductStringField,
+  type ProductData,
+  type ProductItem,
+} from '@/entities/types/product';
 import { reverseObject } from '@/shared/utils/reverseObject';
 
 interface Props {
@@ -27,11 +33,10 @@ interface Props {
   onSelect: (key: Key[], keywords: ProductItem[]) => void;
 }
 
-// TODO: 검색 기능
 export default function Product({ selectedValue, onSelect }: Props) {
-  const [data, setData] = useState<ProductItem[]>([]);
-  const [searchText, setSearchText] = useState('');
+  const [data, setData] = useState<ProductData | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
+  const { searchTerm, filteredData, setSearchTerm } = useSearch(data);
 
   const handleChangeFile: UploadXlsxFieldProps['onChange'] = (rawData) => {
     if (!rawData) {
@@ -70,7 +75,7 @@ export default function Product({ selectedValue, onSelect }: Props) {
               throw new Error('잘못된 파일입니다.');
             }
 
-            if (isStringField(categoryKey) && typeof curr === 'string') {
+            if (isProductStringField(categoryKey) && typeof curr === 'string') {
               acc[categoryKey] = curr;
             } else {
               throw new Error(
@@ -98,7 +103,10 @@ export default function Product({ selectedValue, onSelect }: Props) {
         return newRow;
       });
 
-      setData(tableData);
+      setData({
+        type: PRODUCT_DATA_TYPE,
+        value: tableData,
+      });
     } catch (error) {
       console.error(error);
       messageApi.error('잘못된 파일입니다.');
@@ -107,7 +115,7 @@ export default function Product({ selectedValue, onSelect }: Props) {
   };
 
   const handleRemoveData = () => {
-    setData([]);
+    setData(null);
   };
 
   const tableColumns: ColumnsType<ProductItem> = [
@@ -200,15 +208,15 @@ export default function Product({ selectedValue, onSelect }: Props) {
             <Input
               placeholder="제품 검색..."
               prefix={<SearchOutlined className="text-gray-400" />}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="rounded-lg border-gray-300"
               allowClear
             />
           </div>
           <Table
             columns={tableColumns}
-            dataSource={data}
+            dataSource={filteredData ?? data?.value}
             rowSelection={{
               type: 'radio',
               selectedRowKeys: selectedValue ? [selectedValue.key] : [],

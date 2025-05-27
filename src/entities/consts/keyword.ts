@@ -1,3 +1,4 @@
+export const KEWYORD_DATA_TYPE = 'keyword';
 export const KEYWORD_ENUMS = {
   rank: '랭킹',
   keyword: '키워드',

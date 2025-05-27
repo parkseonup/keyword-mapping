@@ -1,6 +1,7 @@
-import { useEffect, useState, type Key } from 'react';
+import { useState, type Key } from 'react';
 
 import { SearchOutlined } from '@ant-design/icons';
+import useSearch from '@shared/hooks/useSearch';
 import UploadXlsxField, {
   type Props as UploadXlsxFieldProps,
 } from '@shared/ui/UploadXlsxField';
@@ -11,13 +12,15 @@ import { Card, Input, message, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import {
+  KEWYORD_DATA_TYPE,
   KEYWORD_CATEGORY_ROW_INDEX,
   KEYWORD_DATA_START_ROW_INDEX,
   KEYWORD_ENUMS,
 } from '@/entities/consts/keyword';
 import {
-  isNumberField,
-  isStringField,
+  isKeywordNumberField,
+  isKeywordStringField,
+  type KeywordData,
   type KeywordItem,
 } from '@/entities/types/keyword';
 import { reverseObject } from '@/shared/utils/reverseObject';
@@ -27,10 +30,10 @@ interface Props {
   onSelect: (key: Key[], keywords: KeywordItem[]) => void;
 }
 
-// TODO: 검색 기능
 export default function Keyword({ selectedValues, onSelect }: Props) {
-  const [data, setData] = useState<KeywordItem[]>([]);
+  const [data, setData] = useState<KeywordData | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
+  const { searchTerm, filteredData, setSearchTerm } = useSearch(data);
 
   const handleChangeFile: UploadXlsxFieldProps['onChange'] = (rawData) => {
     // 데이터를 찾을 수 없을 경우 > 에러 출력
@@ -66,11 +69,14 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
             }
 
             // 숫자 필드인 경우
-            if (isNumberField(categoryKey) && typeof curr === 'number') {
+            if (isKeywordNumberField(categoryKey) && typeof curr === 'number') {
               acc[categoryKey] = curr;
             }
             // 문자열 필드인 경우
-            else if (isStringField(categoryKey) && typeof curr === 'string') {
+            else if (
+              isKeywordStringField(categoryKey) &&
+              typeof curr === 'string'
+            ) {
               acc[categoryKey] = curr;
             } else {
               throw new Error(
@@ -97,7 +103,10 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
         return newRow;
       });
 
-      setData(tableData);
+      setData({
+        type: KEWYORD_DATA_TYPE,
+        value: tableData,
+      });
     } catch (error) {
       console.error(error);
       messageApi.error('잘못된 파일입니다.');
@@ -106,7 +115,7 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
   };
 
   const handleRemoveData = () => {
-    setData([]);
+    setData(null);
   };
 
   const tableColumns: ColumnsType<KeywordItem> = [
@@ -226,13 +235,15 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
             <Input
               placeholder="키워드 검색..."
               prefix={<SearchOutlined className="text-gray-400" />}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="rounded-lg border-gray-300"
               allowClear
             />
           </div>
           <Table
             columns={tableColumns}
-            dataSource={data}
+            dataSource={filteredData ?? data?.value}
             rowSelection={{
               type: 'checkbox',
               selectedRowKeys: selectedValues.map((values) => values.key),
@@ -245,7 +256,7 @@ export default function Keyword({ selectedValues, onSelect }: Props) {
               showSizeChanger: true,
               showTotal: (total) => `총 ${total}개 항목`,
             }}
-            rowClassName={(record, index) =>
+            rowClassName={(_, index) =>
               index % 2 === 0
                 ? 'bg-white hover:bg-blue-50'
                 : 'bg-gray-50 hover:bg-blue-50'

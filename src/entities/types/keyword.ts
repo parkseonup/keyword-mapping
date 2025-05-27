@@ -1,3 +1,10 @@
+import { KEWYORD_DATA_TYPE } from '../consts/keyword';
+
+export type KeywordData = {
+  type: typeof KEWYORD_DATA_TYPE;
+  value: KeywordItem[];
+};
+
 export type KeywordItem = Record<NumberField, number> &
   Record<StringField, string>;
 
@@ -12,7 +19,7 @@ const numberFieldKeys = [
 
 type NumberField = (typeof numberFieldKeys)[number];
 
-export function isNumberField(key: string): key is NumberField {
+export function isKeywordNumberField(key: string): key is NumberField {
   return numberFieldKeys.includes(key as NumberField);
 }
 
@@ -28,6 +35,16 @@ const stringFieldKeys = [
 
 type StringField = (typeof stringFieldKeys)[number];
 
-export function isStringField(key: string): key is StringField {
+export function isKeywordStringField(key: string): key is StringField {
   return stringFieldKeys.includes(key as StringField);
+}
+
+export function isKeywordData(
+  data: Record<string, unknown>
+): data is KeywordData {
+  return (
+    typeof data === 'object' &&
+    'type' in data &&
+    data.type === KEWYORD_DATA_TYPE
+  );
 }
