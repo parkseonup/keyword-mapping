@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 
+import { arrayMove } from '@dnd-kit/sortable';
 import Result from '@features/result/Result';
 import { message } from 'antd';
 
@@ -8,10 +9,10 @@ import Product from './features/product/Product';
 
 import type { KeywordItem } from './entities/types/keyword';
 import type { ProductItem } from './entities/types/product';
-import type { ResultColumn, Results } from './entities/types/result';
+import type { ResultColumn } from './entities/types/result';
 
 export default function App() {
-  const [results, setResults] = useState<Results>({});
+  const [results, setResults] = useState<ResultColumn[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(
     null
   );
@@ -36,24 +37,35 @@ export default function App() {
     }
 
     setResults((prev) => {
-      const targetResult = prev[selectedProduct.key];
+      const foundProduct = results.find(
+        (result) => result.key === selectedProduct.key
+      );
 
-      return {
-        ...prev,
-        [selectedProduct.key]: {
-          product: targetResult ? targetResult.product : selectedProduct,
-          keywords: selectedRows,
-        },
-      };
+      // 매핑 목록에 없는 제품이면 생성
+      if (!foundProduct) {
+        return [
+          ...prev,
+          {
+            key: selectedProduct.key,
+            product: selectedProduct,
+            keywords: selectedRows,
+          },
+        ];
+      }
+      // 매핑 목록에 있는 제품이면 추가
+      else {
+        return prev.map((item) =>
+          item.key === selectedProduct.key
+            ? { ...item, keywords: selectedRows }
+            : item
+        );
+      }
     });
   };
 
   const handleRemoveAllKeywords = (productKey: ResultColumn['key']) => {
     setResults((prev) => {
-      const copyPrev = { ...prev };
-      delete copyPrev[productKey];
-
-      return copyPrev;
+      return prev.filter((item) => item.key === productKey);
     });
   };
 
@@ -62,38 +74,57 @@ export default function App() {
     keywordKey: KeywordItem['key']
   ) => {
     setResults((prev) => {
-      const targetResult = prev[productKey];
-      const newKeywords = targetResult.keywords.filter(
+      const foundProduct = prev.find((result) => result.key === productKey);
+
+      if (!foundProduct) return prev;
+
+      const filteredKeyword = foundProduct.keywords.filter(
         (keyword) => keyword.key !== keywordKey
       );
 
-      const copyPrev = { ...prev };
-
-      // 매핑된 키워드가 전부 제거되어 없으면 제품 기록을 제거한다.
-      if (newKeywords.length === 0) {
-        delete copyPrev[productKey];
-      }
-      // 매핑된 키워드가 남아있으면 newKeywords로 교체한다.
-      else {
-        copyPrev[productKey] = {
-          ...copyPrev[productKey],
-          keywords: newKeywords,
-        };
-      }
-
-      return copyPrev;
+      return filteredKeyword.length === 0
+        ? prev.filter((item) => item.key !== productKey) // 매핑된 키워드가 전부 제거되어 없으면 제품 기록을 제거한다.
+        : replaceKeywords(prev, productKey, filteredKeyword); // 매핑된 키워드가 남아있으면 newKeywords로 교체한다.
     });
   };
 
-  const resultsData: ResultColumn[] = Object.entries(results).map(
-    ([productKey, values]) => {
-      return {
-        key: productKey,
-        product: values.product,
-        keywords: values.keywords,
-      };
-    }
-  );
+  const replaceKeywords = (
+    results: ResultColumn[],
+    productKey: ProductItem['key'],
+    newKeywords: KeywordItem[]
+  ) => {
+    return results.map((result) =>
+      result.key === productKey ? { ...result, keywords: newKeywords } : result
+    );
+  };
+
+  const changeKeywordOrder = (
+    productKey: ProductItem['key'],
+    keywordKey: KeywordItem['key'],
+    overKey: KeywordItem['key']
+  ) => {
+    setResults((prev) => {
+      const targetProduct = prev.find((item) => item.key === productKey);
+
+      if (!targetProduct) return prev;
+
+      const oldIndex = targetProduct.keywords.findIndex(
+        (keyword) => keyword.key === keywordKey
+      );
+      const newIndex = targetProduct.keywords.findIndex(
+        (keyword) => keyword.key === overKey
+      );
+
+      const newKeywords = arrayMove(targetProduct.keywords, oldIndex, newIndex);
+
+      return replaceKeywords(prev, productKey, newKeywords);
+    });
+  };
+
+  const selectedKeywords =
+    (selectedProduct &&
+      results.find((result) => result.key === selectedProduct.key)?.keywords) ??
+    [];
 
   return (
     <>
@@ -114,17 +145,14 @@ export default function App() {
                 onSelect={handleProductSelection}
               />
               <Keyword
-                selectedValues={
-                  selectedProduct && results[selectedProduct.key]
-                    ? results[selectedProduct.key].keywords
-                    : []
-                }
+                selectedValues={selectedKeywords}
                 onSelect={handleKeywordSelection}
               />
             </div>
             <div className="mt-6">
               <Result
-                data={resultsData}
+                data={results}
+                changeKeywordOrder={changeKeywordOrder}
                 onRemoveAllKeywords={handleRemoveAllKeywords}
                 onRemoveKeyword={handleRemoveKeyword}
               />

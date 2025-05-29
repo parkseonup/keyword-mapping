@@ -1,18 +1,16 @@
+import { CopyOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
-  CopyOutlined,
-  DeleteOutlined,
-  HolderOutlined,
-} from '@ant-design/icons';
-import {
-  Button,
-  Card,
-  message,
-  Space,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-} from 'antd';
+  closestCenter,
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext } from '@dnd-kit/sortable';
+import DraggableTag from '@shared/ui/DraggableTag';
+import { isString } from '@shared/utils/typeGuard';
+import { Button, Card, message, Space, Table, Tooltip, Typography } from 'antd';
 
 import type { KeywordItem } from '@/entities/types/keyword';
 import type { ProductItem } from '@/entities/types/product';
@@ -21,6 +19,11 @@ import type { ColumnsType } from 'antd/es/table';
 
 interface Props {
   data: ResultColumn[];
+  changeKeywordOrder: (
+    productKey: ProductItem['key'],
+    keywordKey: KeywordItem['key'],
+    overKey: KeywordItem['key']
+  ) => void;
   onRemoveAllKeywords: (productKey: ResultColumn['key']) => void;
   onRemoveKeyword: (
     productKey: ProductItem['key'],
@@ -30,10 +33,23 @@ interface Props {
 
 export default function Result({
   data,
+  changeKeywordOrder,
   onRemoveAllKeywords,
   onRemoveKeyword,
 }: Props) {
   const [messageApi, contextHolder] = message.useMessage();
+
+  const sensors = useSensors(useSensor(PointerSensor));
+
+  const handleDragEnd = (e: DragEndEvent, productKey: ProductItem['key']) => {
+    const { active, over } = e;
+
+    if (!over) return;
+    if (active.id === over.id) return;
+    if (!(isString(active.id) && isString(over.id))) return;
+
+    changeKeywordOrder(productKey, active.id, over.id);
+  };
 
   const resultsColumns: ColumnsType<ResultColumn> = [
     {
@@ -42,7 +58,6 @@ export default function Result({
       key: 'product',
       width: '30%',
       render: (_, record) => {
-        console.log('record: ', record);
         return (
           <div>
             <div className="font-medium">{record.product.name}</div>
@@ -57,23 +72,32 @@ export default function Result({
       key: 'keywords',
       width: '50%',
       // TODO: drag & drop으로 keyword 순서 변경
-      render: (keywords, record) => (
-        <div className="flex flex-wrap gap-1">
-          {keywords.map((keyword: KeywordItem) => (
-            <Tag
-              key={keyword.keyword}
-              icon={<HolderOutlined />}
-              color="blue"
-              onClose={() => {
-                onRemoveKeyword(record.product.key, keyword.key);
-              }}
-              closable
-            >
-              {keyword.keyword}
-            </Tag>
-          ))}
-        </div>
-      ),
+      render: (keywords, record) => {
+        console.log('keywords: ', keywords);
+        return (
+          <DndContext
+            sensors={sensors}
+            onDragEnd={(e) => handleDragEnd(e, record.product.key)}
+            collisionDetection={closestCenter}
+          >
+            <SortableContext items={keywords}>
+              <div className="flex flex-wrap gap-1">
+                {keywords.map((keyword: KeywordItem) => (
+                  <DraggableTag
+                    key={keyword.key}
+                    id={keyword.key}
+                    onClose={() => {
+                      onRemoveKeyword(record.product.key, keyword.key);
+                    }}
+                  >
+                    {keyword.keyword}
+                  </DraggableTag>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        );
+      },
     },
     {
       title: '작업',
@@ -131,7 +155,7 @@ export default function Result({
                 showSizeChanger: true,
                 showTotal: (total) => `총 ${total}개 매핑`,
               }}
-              rowClassName={(record, index) =>
+              rowClassName={(_, index) =>
                 index % 2 === 0
                   ? 'bg-white hover:bg-blue-50'
                   : 'bg-gray-50 hover:bg-blue-50'

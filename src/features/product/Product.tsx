@@ -45,7 +45,6 @@ export default function Product({ selectedValue, onSelect }: Props) {
     }
 
     // 데이터가 문자열로 된 2차원 배열이 아닐 경우 > 에러 출력
-    // TODO: 타입 가드 함수를 이렇게 묶는게 맞을까?
     if (!isString2DArray(rawData)) {
       messageApi.error('잘못된 파일입니다.');
       return;

@@ -26,6 +26,7 @@ export function isKeywordNumberField(key: string): key is NumberField {
 // 문자열 필드
 const stringFieldKeys = [
   'key',
+  'id',
   'keyword',
   'category1',
   'category2',
