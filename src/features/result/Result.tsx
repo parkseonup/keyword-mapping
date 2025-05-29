@@ -71,9 +71,7 @@ export default function Result({
       dataIndex: 'keywords',
       key: 'keywords',
       width: '50%',
-      // TODO: drag & drop으로 keyword 순서 변경
       render: (keywords, record) => {
-        console.log('keywords: ', keywords);
         return (
           <DndContext
             sensors={sensors}
